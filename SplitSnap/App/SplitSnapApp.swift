@@ -9,6 +9,7 @@ struct SplitSnapApp: App {
             NavigationStack {
                 BillEditorView(bill: bill)
             }
+            .tint(Theme.violet)
         }
     }
 }

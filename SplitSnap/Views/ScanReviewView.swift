@@ -30,6 +30,8 @@ struct ScanReviewView: View {
                 }
                 totalsSection
             }
+            .scrollContentBackground(.hidden)
+            .background(Theme.background.ignoresSafeArea())
             .navigationTitle("Review Scan")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

@@ -6,19 +6,21 @@ import SwiftUI
 struct CurrencyField: View {
     let placeholder: String
     @Binding var cents: Cents
+    var alignment: TextAlignment
 
     @State private var text = ""
     @FocusState private var isFocused: Bool
 
-    init(_ placeholder: String = "0.00", cents: Binding<Cents>) {
+    init(_ placeholder: String = "0.00", cents: Binding<Cents>, alignment: TextAlignment = .trailing) {
         self.placeholder = placeholder
         _cents = cents
+        self.alignment = alignment
     }
 
     var body: some View {
         TextField(placeholder, text: $text)
             .keyboardType(.decimalPad)
-            .multilineTextAlignment(.trailing)
+            .multilineTextAlignment(alignment)
             .monospacedDigit()
             .focused($isFocused)
             .onAppear(perform: syncFromValue)

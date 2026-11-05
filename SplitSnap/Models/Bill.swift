@@ -42,6 +42,13 @@ enum SplitMode: String, CaseIterable, Identifiable {
         case .even: "Evenly"
         }
     }
+
+    var symbol: String {
+        switch self {
+        case .itemized: "list.bullet"
+        case .even: "equal"
+        }
+    }
 }
 
 /// The bill currently being split. In-memory for the MVP; saved receipts and
@@ -58,8 +65,15 @@ final class Bill {
     /// Even mode: the total printed on the receipt, tax included.
     var receiptTotalCents: Cents = 0
     var tipPercent: Int = 20
+    /// Set once the user picks a way to start from the welcome screen.
+    var hasStarted = false
 
     private var nextColorIndex = 0
+
+    /// Show the welcome screen for a brand-new, untouched bill.
+    var showsWelcome: Bool {
+        !hasStarted && people.isEmpty && items.isEmpty && receiptTotalCents == 0
+    }
 
     // MARK: People
 
@@ -129,6 +143,7 @@ final class Bill {
         taxCents = 0
         receiptTotalCents = 0
         tipPercent = 20
+        hasStarted = false
         nextColorIndex = 0
     }
 
