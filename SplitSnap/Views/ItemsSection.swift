@@ -213,8 +213,8 @@ struct QuickAddItemRow: View {
         .toolbar {
             if focusedField == .price {
                 ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Add Item", action: add)
+                    Button("Add Item", systemImage: "plus.circle.fill", action: add)
+                        .labelStyle(.titleAndIcon)
                         .fontWeight(.bold)
                         .disabled(priceCents == nil)
                 }
@@ -277,6 +277,11 @@ struct EditItemSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { UIApplication.shared.dismissKeyboard() }
+                        .fontWeight(.bold)
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save", action: save)
                         .fontWeight(.bold)
@@ -284,7 +289,7 @@ struct EditItemSheet: View {
                 }
             }
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.medium, .large])
         .presentationCornerRadius(28)
     }
 

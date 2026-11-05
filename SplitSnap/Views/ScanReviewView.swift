@@ -18,6 +18,11 @@ struct ScanReviewView: View {
         receipt.items.filter { includedIDs.contains($0.id) }
     }
 
+    /// Counts expanded units, so "Tacos ×3" counts as three.
+    private var billItemCount: Int {
+        selectedItems.reduce(0) { $0 + $1.expandsToCount }
+    }
+
     private var selectedSum: Cents {
         selectedItems.reduce(0) { $0 + $1.priceCents }
     }
@@ -51,7 +56,7 @@ struct ScanReviewView: View {
 
     private var confirmTitle: String {
         switch bill.mode {
-        case .itemized: selectedItems.count == 1 ? "Add 1 Item" : "Add \(selectedItems.count) Items"
+        case .itemized: billItemCount == 1 ? "Add 1 Item" : "Add \(billItemCount) Items"
         case .even: "Use Total"
         }
     }
@@ -79,8 +84,20 @@ struct ScanReviewView: View {
                         Image(systemName: includedIDs.contains(item.id) ? "checkmark.circle.fill" : "circle")
                             .foregroundStyle(includedIDs.contains(item.id) ? Color.accentColor : Color.secondary)
                             .font(.title3)
-                        Text(item.name)
-                            .foregroundStyle(includedIDs.contains(item.id) ? .primary : .secondary)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(item.displayName)
+                                .foregroundStyle(includedIDs.contains(item.id) ? .primary : .secondary)
+                            if item.discountCents > 0 {
+                                Label("\(Money.format(item.discountCents)) off applied", systemImage: "tag.fill")
+                                    .font(Theme.font(.caption, weight: .semibold))
+                                    .foregroundStyle(Theme.success)
+                            }
+                            if item.expandsToCount > 1 {
+                                Text("Adds \(item.expandsToCount) items, one per person to tap")
+                                    .font(Theme.font(.caption, weight: .semibold))
+                                    .foregroundStyle(Theme.violet)
+                            }
+                        }
                         Spacer()
                         Text(Money.format(item.priceCents))
                             .monospacedDigit()
@@ -141,7 +158,9 @@ struct ScanReviewView: View {
         } header: {
             Text("Totals Found")
         } footer: {
-            if let tip = receipt.tipCents, tip > 0 {
+            if receipt.unappliedDiscountCents > 0 {
+                Text("\(Money.format(receipt.unappliedDiscountCents)) in discounts couldn't be matched to an item. Edit prices after adding if needed.")
+            } else if let tip = receipt.tipCents, tip > 0 {
                 Text("This receipt already includes a gratuity. You may want to set the tip to None.")
             } else if bill.mode == .itemized, receipt.taxCents != nil {
                 Text("The tax will be filled in for you.")

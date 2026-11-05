@@ -1,4 +1,12 @@
 import SwiftUI
+import UIKit
+
+extension UIApplication {
+    /// Ends editing in whichever text field is active.
+    func dismissKeyboard() {
+        sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+}
 
 // MARK: - Card
 

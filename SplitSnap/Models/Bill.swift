@@ -154,7 +154,9 @@ final class Bill {
         switch mode {
         case .itemized:
             for item in selected {
-                addItem(named: item.name, priceCents: item.priceCents)
+                for unit in item.billUnits {
+                    addItem(named: unit.name, priceCents: unit.priceCents)
+                }
             }
             if let tax = receipt.taxCents { taxCents = tax }
         case .even:

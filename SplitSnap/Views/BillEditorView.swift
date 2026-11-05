@@ -7,6 +7,7 @@ struct BillEditorView: View {
     @State private var showingSummary = false
     @State private var confirmingReset = false
     @State private var scanner = ReceiptScanner()
+    @State private var keyboardVisible = false
 
     var body: some View {
         ScrollView {
@@ -53,6 +54,13 @@ struct BillEditorView: View {
                     .font(Theme.font(.title3, weight: .black))
                     .foregroundStyle(Theme.brandGradient)
             }
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") {
+                    UIApplication.shared.dismissKeyboard()
+                }
+                .fontWeight(.bold)
+            }
             if !bill.showsWelcome {
                 ToolbarItem(placement: .topBarLeading) {
                     scanMenu
@@ -70,7 +78,9 @@ struct BillEditorView: View {
             }
         }
         .safeAreaInset(edge: .bottom) {
-            if !bill.showsWelcome {
+            // While typing, the keyboard owns the bottom of the screen;
+            // the Split button comes back as soon as it's dismissed.
+            if !bill.showsWelcome && !keyboardVisible {
                 splitButton
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
@@ -79,6 +89,12 @@ struct BillEditorView: View {
             SummaryView(bill: bill)
         }
         .receiptScanning(scanner, bill: bill)
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+            withAnimation(.snappy) { keyboardVisible = true }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            withAnimation(.snappy) { keyboardVisible = false }
+        }
         .sensoryFeedback(.impact(weight: .medium), trigger: showingSummary) { _, isShowing in isShowing }
     }
 

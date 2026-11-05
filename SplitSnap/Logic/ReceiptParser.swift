@@ -6,7 +6,37 @@ struct ParsedReceipt: Identifiable {
     struct Item: Identifiable, Hashable {
         let id = UUID()
         var name: String
+        /// The line total as printed (all units together).
         var priceCents: Cents
+        var quantity: Int = 1
+        /// Discounts already taken off `priceCents`, for display.
+        var discountCents: Cents = 0
+        /// Store item number (e.g. Costco's), used to match discount lines.
+        var code: String? = nil
+
+        /// Lines with more units than this stay as one shared item
+        /// ("12 Wings") instead of flooding the bill.
+        static let maxExpandedQuantity = 8
+
+        var displayName: String {
+            quantity > 1 ? "\(name) ×\(quantity)" : name
+        }
+
+        /// How many bill items this line becomes.
+        var expandsToCount: Int {
+            (2...Self.maxExpandedQuantity).contains(quantity) ? quantity : 1
+        }
+
+        /// The bill items for this line: one per unit for small quantities,
+        /// so each unit can be assigned to a different person. Unit prices
+        /// always add back up to the printed line total.
+        var billUnits: [(name: String, priceCents: Cents)] {
+            guard expandsToCount > 1 else { return [(name: displayName, priceCents: priceCents)] }
+            let prices = SplitCalculator.allocate(priceCents, weights: Array(repeating: 1, count: quantity))
+            return prices.enumerated().map { index, cents in
+                (name: "\(name) (\(index + 1) of \(quantity))", priceCents: cents)
+            }
+        }
     }
 
     let id = UUID()
@@ -16,6 +46,8 @@ struct ParsedReceipt: Identifiable {
     /// A gratuity / service charge already printed on the receipt.
     var tipCents: Cents?
     var totalCents: Cents?
+    /// Discounts that couldn't be matched to an item.
+    var unappliedDiscountCents: Cents = 0
 
     var itemsSumCents: Cents { items.reduce(0) { $0 + $1.priceCents } }
 
@@ -98,11 +130,22 @@ enum ReceiptParser {
                 continue
             }
 
-            let label = priced.label
-            let name = letterCount(label) >= 2 ? label : pendingName
+            // Discounts and coupons ("1.50-", "-2.00"): take them off the
+            // item they belong to so items still add up to the subtotal.
+            if priced.isNegative {
+                pendingName = nil
+                if !inTotalsSection {
+                    applyDiscount(priced.cents, label: priced.label, to: &receipt)
+                }
+                continue
+            }
+
+            let coded = stripItemCode(from: priced.label)
+            let parts = splitQuantity(from: coded.label)
+            let name = letterCount(parts.name) >= 2 ? parts.name : pendingName
             pendingName = nil
 
-            guard let name, !priced.isNegative else { continue }
+            guard let name else { continue }
 
             switch kind(of: name) {
             case .subtotal:
@@ -125,7 +168,12 @@ enum ReceiptParser {
             case .item:
                 // Anything after the totals is payment info, tip suggestions, etc.
                 guard !inTotalsSection, priced.cents > 0 else { continue }
-                receipt.items.append(.init(name: tidyName(name), priceCents: priced.cents))
+                receipt.items.append(.init(
+                    name: tidyName(name),
+                    priceCents: priced.cents,
+                    quantity: parts.quantity,
+                    code: coded.code
+                ))
             }
         }
         return receipt
@@ -167,6 +215,110 @@ enum ReceiptParser {
             .trimmingCharacters(in: CharacterSet.whitespaces.union(CharacterSet(charactersIn: ".:$-")))
         return (label, cents, isNegative)
     }
+
+    // MARK: Item codes & discounts
+
+    /// A leading store item number, optionally after a one-letter flag:
+    /// "E 1234567 KS WATER" → code "1234567", label "KS WATER".
+    private static let itemCodeRegex = try! NSRegularExpression(
+        pattern: #"^(?:[A-Za-z]\s+)?(\d{4,})\s+(?=.*[A-Za-z])"#
+    )
+    private static let digitRunRegex = try! NSRegularExpression(pattern: #"\d{4,}"#)
+
+    static func stripItemCode(from label: String) -> (label: String, code: String?) {
+        guard let match = itemCodeRegex.firstMatch(in: label, range: NSRange(label.startIndex..., in: label)),
+              let whole = Range(match.range, in: label),
+              let codeRange = Range(match.range(at: 1), in: label) else {
+            return (label, nil)
+        }
+        return (String(label[whole.upperBound...]), String(label[codeRange]))
+    }
+
+    /// Takes a discount off the item it references by item number (Costco
+    /// prints "/1234567"), or else off the item just above it.
+    private static func applyDiscount(_ cents: Cents, label: String, to receipt: inout ParsedReceipt) {
+        guard !receipt.items.isEmpty else {
+            receipt.unappliedDiscountCents += cents
+            return
+        }
+
+        var index = receipt.items.count - 1
+        let range = NSRange(label.startIndex..., in: label)
+        let referencedCodes = digitRunRegex.matches(in: label, range: range).compactMap { match in
+            Range(match.range, in: label).map { String(label[$0]) }
+        }
+        if let matched = receipt.items.lastIndex(where: { item in
+            item.code.map { referencedCodes.contains($0) } ?? false
+        }) {
+            index = matched
+        }
+
+        let applied = min(cents, receipt.items[index].priceCents)
+        receipt.items[index].priceCents -= applied
+        receipt.items[index].discountCents += applied
+        receipt.unappliedDiscountCents += cents - applied
+    }
+
+    // MARK: Quantities
+
+    /// "2 @ 4.50" or "2 @ $4.50 ea" anywhere in the label.
+    private static let unitPriceRegex = try! NSRegularExpression(
+        pattern: #"(?:^|\s)(\d{1,3})\s*@\s*\$?\d+[.,]\d{2}(?:\s*(?:ea|each)\b)?"#,
+        options: [.caseInsensitive]
+    )
+    /// "2 Horchata", "2x Horchata", "2 x Horchata"
+    private static let leadingQuantityRegex = try! NSRegularExpression(pattern: #"^(\d{1,3})\s*[xX]?\s+(.+)$"#)
+    /// "Horchata x2", "Horchata X 2"
+    private static let trailingQuantityRegex = try! NSRegularExpression(pattern: #"^(.+?)\s+[xX]\s?(\d{1,3})$"#)
+    /// "16 oz Ribeye" and "2 pc Chicken" are sizes, not quantities.
+    private static let measureWords: Set<String> = [
+        "oz", "lb", "lbs", "pc", "pcs", "piece", "pieces", "ct", "in", "inch", "ml", "cl", "l", "g", "kg",
+    ]
+
+    /// Pulls a quantity out of an item label: `"2 Horchata"` → `("Horchata", 2)`.
+    /// Labels without a quantity come back unchanged with a quantity of 1.
+    static func splitQuantity(from label: String) -> (name: String, quantity: Int) {
+        var name = label
+        var quantity: Int?
+
+        if let match = unitPriceRegex.firstMatch(in: name, range: NSRange(name.startIndex..., in: name)),
+           let whole = Range(match.range, in: name),
+           let quantityRange = Range(match.range(at: 1), in: name) {
+            quantity = Int(name[quantityRange])
+            name.removeSubrange(whole)
+            name = name.trimmingCharacters(in: .whitespaces)
+        } else if let groups = captureGroups(of: leadingQuantityRegex, in: name),
+                  let count = Int(groups[0]),
+                  isPlausibleItemName(groups[1]) {
+            quantity = count
+            name = groups[1]
+        } else if let groups = captureGroups(of: trailingQuantityRegex, in: name),
+                  let count = Int(groups[1]),
+                  letterCount(groups[0]) >= 2 {
+            quantity = count
+            name = groups[0]
+        }
+
+        return (name, max(1, quantity ?? 1))
+    }
+
+    /// Guards against "7 Up" and "16 oz Ribeye" being read as quantities.
+    private static func isPlausibleItemName(_ text: String) -> Bool {
+        let firstWord = text.split(separator: " ").first
+            .map { $0.lowercased().trimmingCharacters(in: .punctuationCharacters) } ?? ""
+        return letterCount(text) >= 3 && !measureWords.contains(firstWord)
+    }
+
+    private static func captureGroups(of regex: NSRegularExpression, in text: String) -> [String]? {
+        guard let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) else {
+            return nil
+        }
+        return (1..<match.numberOfRanges).map { index in
+            Range(match.range(at: index), in: text).map { String(text[$0]) } ?? ""
+        }
+    }
+
+    // MARK: Helpers (private)
 
     private static func matches(_ text: String, _ pattern: String) -> Bool {
         text.range(of: pattern, options: .regularExpression) != nil
