@@ -1,9 +1,8 @@
 import SwiftUI
 
+/// Itemized mode: tax amount, tip, and the bill totals.
 struct TaxTipSection: View {
     @Bindable var bill: Bill
-    @State private var taxText = ""
-    @FocusState private var taxFocused: Bool
 
     var body: some View {
         let result = bill.result
@@ -12,64 +11,64 @@ struct TaxTipSection: View {
             HStack {
                 Text("Tax")
                 Spacer()
-                TextField("0.00", text: $taxText)
-                    .keyboardType(.decimalPad)
-                    .multilineTextAlignment(.trailing)
-                    .monospacedDigit()
+                CurrencyField(cents: $bill.taxCents)
                     .frame(maxWidth: 110)
-                    .focused($taxFocused)
-                    .onChange(of: taxText) { _, newValue in
-                        bill.taxCents = Money.parse(newValue) ?? 0
-                    }
             }
 
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text("Tip")
-                    Spacer()
-                    Text("\(bill.tipPercent)% · \(Money.format(result.tipCents))")
-                        .monospacedDigit()
-                        .foregroundStyle(.secondary)
-                }
+            TipPicker(bill: bill, tipCents: result.tipCents)
 
-                Picker("Tip", selection: $bill.tipPercent) {
-                    ForEach(Bill.tipPresets, id: \.self) { percent in
-                        Text(percent == 0 ? "None" : "\(percent)%").tag(percent)
-                    }
-                    // Keeps the picker valid when a custom percentage is chosen.
-                    if !Bill.tipPresets.contains(bill.tipPercent) {
-                        Text("\(bill.tipPercent)%").tag(bill.tipPercent)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-
-                Stepper("Custom", value: $bill.tipPercent, in: 0...100)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-
-            totalsRow("Subtotal", result.subtotalCents)
-            totalsRow("Tax", result.taxCents)
-            totalsRow("Tip", result.tipCents)
-            totalsRow("Total", result.totalCents, emphasized: true)
+            TotalsRow(label: "Subtotal", cents: result.subtotalCents)
+            TotalsRow(label: "Tax", cents: result.taxCents)
+            TotalsRow(label: "Tip", cents: result.tipCents)
+            TotalsRow(label: "Total", cents: result.totalCents, emphasized: true)
         } header: {
             Text("Tax & Tip")
         } footer: {
             Text("Tip is based on the pre-tax subtotal. Tax and tip are split in proportion to what each person ordered.")
         }
-        .onAppear {
-            if bill.taxCents > 0 && taxText.isEmpty {
-                taxText = Money.editableText(bill.taxCents)
+    }
+}
+
+/// Tip presets plus a stepper for any other percentage.
+struct TipPicker: View {
+    @Bindable var bill: Bill
+    let tipCents: Cents
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Tip")
+                Spacer()
+                Text("\(bill.tipPercent)% · \(Money.format(tipCents))")
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
             }
-        }
-        .onChange(of: bill.taxCents) { _, newValue in
-            // Clear the field when the bill is reset.
-            if newValue == 0 && !taxFocused { taxText = "" }
+
+            Picker("Tip", selection: $bill.tipPercent) {
+                ForEach(Bill.tipPresets, id: \.self) { percent in
+                    Text(percent == 0 ? "None" : "\(percent)%").tag(percent)
+                }
+                // Keeps the picker valid when a custom percentage is chosen.
+                if !Bill.tipPresets.contains(bill.tipPercent) {
+                    Text("\(bill.tipPercent)%").tag(bill.tipPercent)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+
+            Stepper("Custom", value: $bill.tipPercent, in: 0...100)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
         }
     }
+}
 
-    private func totalsRow(_ label: String, _ cents: Cents, emphasized: Bool = false) -> some View {
+struct TotalsRow: View {
+    let label: String
+    let cents: Cents
+    var emphasized = false
+
+    var body: some View {
         HStack {
             Text(label)
             Spacer()

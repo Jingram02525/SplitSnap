@@ -110,7 +110,7 @@ struct PersonShareRow: View {
     }
 
     private func itemName(_ id: UUID) -> String {
-        bill.items.first { $0.id == id }?.name ?? "Item"
+        bill.itemName(for: id)
     }
 
     private func detail(_ label: String, _ cents: Cents) -> some View {

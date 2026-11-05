@@ -2,10 +2,16 @@ import SwiftUI
 
 struct ItemsSection: View {
     @Bindable var bill: Bill
+    let onScan: @MainActor () -> Void
     @State private var editingItem: LineItem?
 
     var body: some View {
         Section {
+            if bill.items.isEmpty {
+                Button("Scan Receipt", systemImage: "doc.text.viewfinder", action: onScan)
+                    .font(.headline)
+            }
+
             ForEach(bill.items) { item in
                 ItemRow(bill: bill, item: item) {
                     editingItem = item

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Scheme
-   LastUpgradeVersion = "1600"
+   LastUpgradeVersion = "2710"
    version = "1.7">
    <BuildAction
       parallelizeBuildables = "YES"
@@ -54,13 +54,13 @@
       allowLocationSimulation = "YES">
       <BuildableProductRunnable
          runnableDebuggingMode = "0">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "5A1B0000000000000000000D"
-               BuildableName = "SplitSnap.app"
-               BlueprintName = "SplitSnap"
-               ReferencedContainer = "container:SplitSnap.xcodeproj">
-            </BuildableReference>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "5A1B0000000000000000000D"
+            BuildableName = "SplitSnap.app"
+            BlueprintName = "SplitSnap"
+            ReferencedContainer = "container:SplitSnap.xcodeproj">
+         </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
    <ProfileAction
@@ -71,13 +71,13 @@
       debugDocumentVersioning = "YES">
       <BuildableProductRunnable
          runnableDebuggingMode = "0">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "5A1B0000000000000000000D"
-               BuildableName = "SplitSnap.app"
-               BlueprintName = "SplitSnap"
-               ReferencedContainer = "container:SplitSnap.xcodeproj">
-            </BuildableReference>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "5A1B0000000000000000000D"
+            BuildableName = "SplitSnap.app"
+            BlueprintName = "SplitSnap"
+            ReferencedContainer = "container:SplitSnap.xcodeproj">
+         </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>
    <AnalyzeAction

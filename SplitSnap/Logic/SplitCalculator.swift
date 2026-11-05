@@ -115,6 +115,55 @@ enum SplitCalculator {
         )
     }
 
+    /// Item ID used for each person's portion in an even split.
+    static let evenShareItemID = UUID(uuidString: "00000000-0000-0000-0000-00000000E5E5")!
+
+    /// Splits a receipt total evenly. `receiptTotalCents` includes tax; passing
+    /// `taxCents` lets a percentage tip be figured on the pre-tax amount.
+    /// Everyone's totals differ by at most a cent and add up exactly.
+    static func splitEvenly(
+        personIDs: [UUID],
+        receiptTotalCents: Cents,
+        taxCents: Cents,
+        tip: Tip
+    ) -> SplitResult {
+        let people = personIDs.uniqued()
+        let total = max(0, receiptTotalCents)
+        let tax = min(max(0, taxCents), total)
+        let preTax = total - tax
+        let tip = tipCents(for: tip, subtotal: preTax)
+
+        guard !people.isEmpty else {
+            var unassigned = Share(taxCents: tax, tipCents: tip)
+            if preTax > 0 {
+                unassigned.itemLines = [.init(itemID: evenShareItemID, cents: preTax, splitCount: 0)]
+            }
+            return SplitResult(shares: [:], unassigned: unassigned, subtotalCents: preTax, taxCents: tax, tipCents: tip)
+        }
+
+        let evenly = Array(repeating: 1, count: people.count)
+        // Split the grand total first so per-person totals are as even as possible,
+        // then carve each person's tax and tip out of their total.
+        let totals = allocate(total + tip, weights: evenly)
+        let taxes = allocate(tax, weights: evenly)
+        let tips = allocate(tip, weights: evenly)
+        var bases = zip(totals, zip(taxes, tips)).map { $0 - $1.0 - $1.1 }
+        if bases.contains(where: { $0 < 0 }) {
+            // Only possible with a few cents total; fall back to splitting the parts.
+            bases = allocate(preTax, weights: evenly)
+        }
+
+        var shares: [UUID: Share] = [:]
+        for (index, personID) in people.enumerated() {
+            shares[personID] = Share(
+                itemLines: [.init(itemID: evenShareItemID, cents: bases[index], splitCount: people.count)],
+                taxCents: taxes[index],
+                tipCents: tips[index]
+            )
+        }
+        return SplitResult(shares: shares, unassigned: Share(), subtotalCents: preTax, taxCents: tax, tipCents: tip)
+    }
+
     static func tipCents(for tip: Tip, subtotal: Cents) -> Cents {
         switch tip {
         case .percent(let percent):

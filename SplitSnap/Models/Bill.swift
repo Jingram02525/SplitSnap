@@ -28,6 +28,22 @@ struct LineItem: Identifiable, Hashable {
     }
 }
 
+enum SplitMode: String, CaseIterable, Identifiable {
+    /// Each person pays for what they ordered.
+    case itemized
+    /// Everyone pays the same share of the receipt total.
+    case even
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .itemized: "By Item"
+        case .even: "Evenly"
+        }
+    }
+}
+
 /// The bill currently being split. In-memory for the MVP; saved receipts and
 /// group history (SwiftData) come later as part of Pro.
 @Observable
@@ -35,9 +51,12 @@ final class Bill {
     static let tipPresets = [0, 15, 18, 20, 25]
 
     var title: String = "Dinner"
+    var mode: SplitMode = .itemized
     var people: [Person] = []
     var items: [LineItem] = []
     var taxCents: Cents = 0
+    /// Even mode: the total printed on the receipt, tax included.
+    var receiptTotalCents: Cents = 0
     var tipPercent: Int = 20
 
     private var nextColorIndex = 0
@@ -108,13 +127,43 @@ final class Bill {
         people = []
         items = []
         taxCents = 0
+        receiptTotalCents = 0
         tipPercent = 20
         nextColorIndex = 0
+    }
+
+    // MARK: Scanning
+
+    /// Applies a reviewed receipt scan to the bill for the current mode.
+    func apply(_ receipt: ParsedReceipt, items selected: [ParsedReceipt.Item]) {
+        switch mode {
+        case .itemized:
+            for item in selected {
+                addItem(named: item.name, priceCents: item.priceCents)
+            }
+            if let tax = receipt.taxCents { taxCents = tax }
+        case .even:
+            receiptTotalCents = receipt.receiptTotalCents
+            taxCents = receipt.taxCents ?? 0
+        }
     }
 
     // MARK: Results
 
     var result: SplitResult {
+        switch mode {
+        case .itemized: itemizedResult
+        case .even:
+            SplitCalculator.splitEvenly(
+                personIDs: people.map(\.id),
+                receiptTotalCents: receiptTotalCents,
+                taxCents: taxCents,
+                tip: .percent(tipPercent)
+            )
+        }
+    }
+
+    private var itemizedResult: SplitResult {
         SplitCalculator.split(SplitInput(
             personIDs: people.map(\.id),
             items: items.map { .init(id: $0.id, priceCents: $0.priceCents, assigneeIDs: $0.assigneeIDs) },
@@ -129,7 +178,17 @@ final class Bill {
     }
 
     var isReadyToSplit: Bool {
-        !people.isEmpty && !items.isEmpty && unassignedItemCount == 0
+        guard !people.isEmpty else { return false }
+        switch mode {
+        case .itemized: return !items.isEmpty && unassignedItemCount == 0
+        case .even: return receiptTotalCents > 0
+        }
+    }
+
+    /// Display name for an item line in a share (including the even-split line).
+    func itemName(for id: UUID) -> String {
+        if id == SplitCalculator.evenShareItemID { return "Even share" }
+        return items.first { $0.id == id }?.name ?? "Item"
     }
 
     // MARK: Sharing
@@ -150,7 +209,7 @@ final class Bill {
         let share = result.share(for: person.id)
         var lines = ["\(person.name), your share of \(title) is \(Money.format(share.totalCents))"]
         for line in share.itemLines {
-            let name = items.first { $0.id == line.itemID }?.name ?? "Item"
+            let name = itemName(for: line.itemID)
             let suffix = line.splitCount > 1 ? " (split \(line.splitCount) ways)" : ""
             lines.append("• \(name)\(suffix): \(Money.format(line.cents))")
         }

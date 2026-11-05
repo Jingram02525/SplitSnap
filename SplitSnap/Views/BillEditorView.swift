@@ -6,22 +6,52 @@ struct BillEditorView: View {
     @Bindable var bill: Bill
     @State private var showingSummary = false
     @State private var confirmingReset = false
+    @State private var scanner = ReceiptScanner()
 
     var body: some View {
         List {
             Section {
                 TextField("Bill name", text: $bill.title)
                     .font(.headline)
+
+                Picker("Split", selection: $bill.mode) {
+                    ForEach(SplitMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
             }
 
             PeopleSection(bill: bill)
-            ItemsSection(bill: bill)
-            TaxTipSection(bill: bill)
+
+            switch bill.mode {
+            case .itemized:
+                ItemsSection(bill: bill, onScan: scanner.start)
+                TaxTipSection(bill: bill)
+            case .even:
+                EvenSplitSection(bill: bill, onScan: scanner.start)
+            }
         }
         .listStyle(.insetGrouped)
         .scrollDismissesKeyboard(.interactively)
         .navigationTitle("SplitSnap")
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Menu {
+                    if scanner.cameraAvailable {
+                        Button("Scan with Camera", systemImage: "doc.text.viewfinder") {
+                            scanner.showingCamera = true
+                        }
+                    }
+                    Button("Choose Photo", systemImage: "photo") {
+                        scanner.showingPhotoPicker = true
+                    }
+                } label: {
+                    Label("Scan Receipt", systemImage: "doc.text.viewfinder")
+                } primaryAction: {
+                    scanner.start()
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button("New Bill", systemImage: "arrow.counterclockwise") {
                     confirmingReset = true
@@ -35,6 +65,7 @@ struct BillEditorView: View {
         .safeAreaInset(edge: .bottom) {
             splitButton
         }
+        .receiptScanning(scanner, bill: bill)
         .navigationDestination(isPresented: $showingSummary) {
             SummaryView(bill: bill)
         }
@@ -65,6 +96,9 @@ struct BillEditorView: View {
 
     private var readinessHint: String? {
         if bill.people.isEmpty { return "Add who's at the table" }
+        if bill.mode == .even {
+            return bill.receiptTotalCents == 0 ? "Enter or scan the receipt total" : nil
+        }
         if bill.items.isEmpty { return "Add what was ordered" }
         let unassigned = bill.unassignedItemCount
         if unassigned > 0 {
